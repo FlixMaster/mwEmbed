@@ -63,11 +63,6 @@
 					'action': 'get',
 					'entryId': entryId
 				});
-				requestsArray.push({
-					'service': 'flavorasset',
-					'action': 'getbyentryid',
-					'entryId': entryId
-				});
 			});
 			
 			_this.getKalturaClient().doRequest(requestsArray, function (data) {
@@ -75,37 +70,25 @@
 				if (!_this.isValidApiResult(data))
 					return;
 
-				var accumulativeFrames = 0;
-				var defaul_fps = 24;
-				var fps = null;
+				var msStartOffset = 0;
 				var entry = null;
-				var flavorAssets = null;
 
 				for (var i = 0; i < data.length; ++i) { 
 					entry = data[i];
-					flavorAssets = data[i+1];
-				    if ( document.URL.indexOf( 'debugKalturaPlayer' ) !== -1 )
-						console.log('raptMediaPlugin::[init]', entry, flavorAssets);
 
-					if (Array.isArray(flavorAssets) && flavorAssets.length > 0 && flavorAssets[0].frameRate > 0)
-						fps = flavorAssets[0].frameRate;
-					else
-						fps = defaul_fps;
-					
-					var segemtFrames = Math.ceil(entry.msDuration / 1000 * fps);
+					if ( document.URL.indexOf( 'debugKalturaPlayer' ) !== -1 )
+						console.log('raptMediaPlugin::[init]', entry);
 
 					var segment = {
-						msStartTime: (accumulativeFrames / fps) * 1000,
+						msStartTime: msStartOffset,
 						msDuration: entry.msDuration,
-						frames: segemtFrames,
 						width: entry.width, 
 						height: entry.height,
 						entryId: entry.id
 					};
 					_this.raptSegments[entry.id] = segment;
 					_this.raptSequence.push(segment);
-					accumulativeFrames += segemtFrames;
-					++i;
+					msStartOffset += entry.msDuration;
 				}
 				
 				$.ajax({ dataType: 'script', url: raptMediaScriptUrl, cache: true })
@@ -178,7 +161,7 @@
 						if (_this.raptSequence.length == 0) return;
 						var currentEntryId = media.sources[0].src;
 						_this.engineCurrentSegment = _this.raptSegments[currentEntryId];
-						_this.getPlayer().sendNotification("doSeek", (_this.engineCurrentSegment.msStartTime / 1000));
+						_this.getPlayer().sendNotification("doSeek", (_this.engineCurrentSegment.msStartTime / 1000) + 0.1);
 						_this.getPlayer().sendNotification("raptMedia_newSegment", _this.engineCurrentSegment);
 						_this.getPlayer().sendNotification('enableGui', { 'guiEnabled': true });
 						_this.log('load: ' + _this.engineCurrentSegment);
@@ -309,4 +292,4 @@
 		},
 		
 	} ) );
-} ) ( window.mw, window.jQuery );	
+} ) ( window.mw, window.jQuery );
