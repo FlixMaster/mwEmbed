@@ -245,11 +245,40 @@
 
 			this.playbackEnded = false;
 
-			var currentTimeMillis = ((parseFloat(this.getPlayer().currentTime).toFixed(3) * 1000) - this.engineCurrentSegment.msStartTime);
+			var globalCurrentTimeMillis = parseFloat(this.getPlayer().currentTime).toFixed(3) * 1000;
+			var currentTimeMillis = (globalCurrentTimeMillis - this.engineCurrentSegment.msStartTime);
+
+			// Smallest seek that the player will honor
+			var minimumSeekMillis = (mw.getConfig("EmbedPlayer.SeekTargetThreshold", 0.1) + 0.01) * 1000;
+
+			// Detect if we're outside the bounds of the current segment and attempt to correct.
+			// Safari in particular appears to regularly under shoot when seeking.
+			// TODO: If we remain out of bounds of the segment
+			// after several attempts to correct we should probably
+			// just fail the playback instead of going into an
+			// infinite loop
+			if (currentTimeMillis < 0) {
+				var targetMillis = this.engineCurrentSegment.msStartTime + Math.max(0, currentTimeMillis + minimumSeekMillis);
+				this.log(
+					'WARNING: Current time: ' + (globalCurrentTimeMillis / 1000) +
+					' is before segment start: ' + (this.engineCurrentSegment.msStartTime / 1000) +
+					'. Possible bad seek. Attempting to correct by seeking to: ' + (targetMillis / 1000)
+				);
+				this.getPlayer().sendNotification('doSeek', targetMillis / 1000);
+			} else if (currentTimeMillis > this.engineCurrentSegment.msDuration) {
+				var targetMillis = this.engineCurrentSegment.msStartTime + Math.min(this.engineCurrentSegment.msDuration - 10, currentTimeMillis - minimumSeekMillis);
+				this.log(
+					'WARNING: Current time: ' + (globalCurrentTimeMillis / 1000) +
+					' is after segment end: ' + ((this.engineCurrentSegment.msStartTime + this.engineCurrentSegment.msDuration) / 1000) +
+					'. Possible playback overrun. Attempting to correct by seeking to: ' + (targetMillis / 1000)
+				);
+				this.getPlayer().sendNotification('doSeek', targetMillis / 1000);
+			}
+
 			if (currentTimeMillis < 0) currentTimeMillis = 0;
 			var currentTimeSec = (currentTimeMillis / 1000).toFixed(3);
 
-			var segmentDurationMillis = this.engineCurrentSegment.msDuration - 550;
+			var segmentDurationMillis = this.engineCurrentSegment.msDuration - 300;
 			var segmentDurationSec = (this.engineCurrentSegment.msDuration / 1000).toFixed(3);
 
 			if (currentTimeMillis >= segmentDurationMillis) {
