@@ -251,26 +251,25 @@
 			// Smallest seek that the player will honor
 			var minimumSeekMillis = (mw.getConfig("EmbedPlayer.SeekTargetThreshold", 0.1) + 0.01) * 1000;
 
+			// Fudge factor to deal with rounding
+			var epsilon = 10; // 10 ms = 0.01 second (two decimal places)
+
 			// Detect if we're outside the bounds of the current segment and attempt to correct.
 			// Safari in particular appears to regularly under shoot when seeking.
-			// TODO: If we remain out of bounds of the segment
-			// after several attempts to correct we should probably
-			// just fail the playback instead of going into an
-			// infinite loop
-			if (currentTimeMillis < 0) {
-				var targetMillis = this.engineCurrentSegment.msStartTime + Math.max(0, currentTimeMillis + minimumSeekMillis);
+			if (currentTimeMillis < -epsilon) {
+				var targetMillis = Math.ceil(this.engineCurrentSegment.msStartTime + Math.max(0, currentTimeMillis + minimumSeekMillis));
 				this.log(
 					'WARNING: Current time: ' + (globalCurrentTimeMillis / 1000) +
-					' is before segment start: ' + (this.engineCurrentSegment.msStartTime / 1000) +
-					'. Possible bad seek. Attempting to correct by seeking to: ' + (targetMillis / 1000)
+					' is before segment start: ' + (this.engineCurrentSegment.msStartTime / 1000).toFixed(3) +
+					'. Possible bad seek. Attempting to correct by seeking to: ' + (targetMillis / 1000).toFixed(3)
 				);
 				this.getPlayer().sendNotification('doSeek', targetMillis / 1000);
 			} else if (currentTimeMillis > this.engineCurrentSegment.msDuration) {
-				var targetMillis = this.engineCurrentSegment.msStartTime + Math.min(this.engineCurrentSegment.msDuration - 10, currentTimeMillis - minimumSeekMillis);
+				var targetMillis = Math.floor(this.engineCurrentSegment.msStartTime + Math.min(this.engineCurrentSegment.msDuration - epsilon, currentTimeMillis - minimumSeekMillis));
 				this.log(
 					'WARNING: Current time: ' + (globalCurrentTimeMillis / 1000) +
-					' is after segment end: ' + ((this.engineCurrentSegment.msStartTime + this.engineCurrentSegment.msDuration) / 1000) +
-					'. Possible playback overrun. Attempting to correct by seeking to: ' + (targetMillis / 1000)
+					' is after segment end: ' + ((this.engineCurrentSegment.msStartTime + this.engineCurrentSegment.msDuration) / 1000).toFixed(3) +
+					'. Possible playback overrun. Attempting to correct by seeking to: ' + (targetMillis / 1000).toFixed(3)
 				);
 				this.getPlayer().sendNotification('doSeek', targetMillis / 1000);
 			}
