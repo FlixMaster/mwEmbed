@@ -80,6 +80,7 @@
 						console.log('raptMediaPlugin::[init]', entry);
 
 					var segment = {
+						discontinuity: i,
 						msStartTime: msStartOffset,
 						msDuration: entry.msDuration,
 						width: entry.width, 
@@ -161,7 +162,11 @@
 						if (_this.raptSequence.length == 0) return;
 						var currentEntryId = media.sources[0].src;
 						_this.engineCurrentSegment = _this.raptSegments[currentEntryId];
-						_this.getPlayer().sendNotification("doSeek", (_this.engineCurrentSegment.msStartTime / 1000) + 0.1);
+
+						// HLS.js shifts the timing of clips, so we try to correct for that
+						_this.fixupSegment(_this.engineCurrentSegment);
+
+						_this.getPlayer().sendNotification("doSeek", _this.engineCurrentSegment.msStartTime / 1000);
 						_this.getPlayer().sendNotification("raptMedia_newSegment", _this.engineCurrentSegment);
 						_this.getPlayer().sendNotification('enableGui', { 'guiEnabled': true });
 						_this.log('load: ' + _this.engineCurrentSegment);
@@ -275,6 +280,43 @@
 				width: this.getPlayer().getVideoHolder().width(),
 				height: this.getPlayer().getVideoHolder().height() 
 			});
+		},
+
+		fixupSegment: function(segment) {
+			// Hls.js has a tendency to shift the start point of fragments around, so
+			// if it's in use we try to guess the new start time of our segment by
+			// looking at HLS.js's internal data structures
+
+			// TODO: Investigate if we will ever need to adjust the duration/end-time
+
+			var hlsjs = this.getPlayer().getPluginInstance('hlsjs');
+			if (!(hlsjs && hlsjs.hls.levels)) {
+				return;
+			}
+
+			this.log('hls.js detected, adjusting segment start time. Original msStartTime: ' + segment.msStartTime);
+
+			// We don't know which quality level will be loaded so look for the
+			// maximum start time across all levels
+			var levels = hlsjs.hls.levels;
+			for (var i = 0; i < levels.length; i++) {
+				var level = levels[i];
+				var fragments = level.details.fragments;
+
+				// Look through all the fragments for the first one that has the
+				// correct discontinuity sequence number
+				for (var j = 0; j < fragments.length; j++) {
+					var fragment = fragments[j];
+
+					if (fragment.cc === segment.discontinuity) {
+						segment.msStartTime = Math.max(segment.msStartTime, fragment.start * 1000);
+						// We found the relevant fragment for this level, skip to the next quality level.
+						break;
+					}
+				}
+			}
+
+			this.log('hls.js adjusted msStartTime: ' + segment.msStartTime);
 		},
 
 		isValidApiResult: function (data) {
