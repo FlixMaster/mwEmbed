@@ -324,6 +324,14 @@
 
 			this.log('hls.js detected, adjusting segment start time. Original msStartTime: ' + segment.msStartTime);
 
+			var fudge = 0;
+			if (kWidget.isFirefox()) {
+				// Firefox seems to need an additional offset
+				// to avoid showing a flash of the previous
+				// segment
+				fudge = 1 / 24 * 1000;
+			}
+
 			// We don't know which quality level will be loaded so look for the
 			// maximum start time across all levels
 			var levels = hlsjs.hls.levels;
@@ -337,7 +345,7 @@
 					var fragment = fragments[j];
 
 					if (fragment.cc === segment.discontinuity) {
-						segment.msStartTime = Math.max(segment.msStartTime, fragment.start * 1000);
+						segment.msStartTime = Math.max(segment.msStartTime, fragment.start * 1000 + fudge);
 						// We found the relevant fragment for this level, skip to the next quality level.
 						break;
 					}
