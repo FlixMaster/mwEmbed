@@ -10,14 +10,16 @@
 	"mw.RaptMediaDurationLabel": {
 		"scripts": "resources/mw.RaptMediaDurationLabel.js",
 		"dependencies": [
-			"mw.KBaseComponent"
+			"mw.KBaseComponent",
+			"durationLabel"
 		],
 		"kalturaPluginName": "raptMediaDurationLabel"
 	},
 	"mw.RaptMediaScrubber": {
 		"scripts": "resources/mw.RaptMediaScrubber.js",
 		"dependencies": [
-			"mw.KBaseComponent"
+			"mw.KBaseComponent",
+			"scrubber"
 		],
 		"kalturaPluginName": "raptMediaScrubber"
 	}
