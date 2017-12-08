@@ -6,6 +6,5 @@
  */
 (function ( mw, $ ) {
 	"use strict";
-	mw.PluginManager.add('raptMediaPlayPauseBtn', mw.PluginManager.getClass('playPauseBtn').extend({
-	} ) );
+	mw.PluginManager.add('raptMediaPlayPauseBtn', mw.PluginManager.getClass('playPauseBtn'));
 } ) ( window.mw, window.jQuery );

@@ -17,8 +17,6 @@
 	"use strict";
 
 	var AbortError = function() {};
-	var END_EPSILON = 0.375;
-	var SEEK_EPSILON = 0.1;
 
 	// Required for playback of stitched playlists on android
 	mw.setConfig("Kaltura.LeadHLSOnAndroid", true);
@@ -36,19 +34,13 @@
 		setup: function(){
 			this.initialize();
 			this.addBindings();
-			this.addOverrides();
 		},
 
 		initialize: function() {
 			this.setConfig('status', 'disabled', true);
 
 			this.setConfig('projectId', undefined, true);
-			this.setConfig('currentSegment', undefined, true);
 			this.setConfig('info', undefined, true);
-
-			this.currentSegment = null;
-			this.segmentEnded = false;
-			this.segments = null;
 		},
 
 		addBindings: function() {
@@ -78,19 +70,6 @@
 				_this.execute(command);
 			});
 
-			this.bind('prePlayAction', function(event, data) {
-				// Block playback when the current segment has ended
-				if (_this.segmentEnded) {
-					data.allowPlayback = false;
-				}
-			});
-
-			this.bind('userInitiatedPlay', function() {
-				if (_this.segmentEnded) {
-					_this.seek(null, 0, false);
-				}
-			});
-
 			this.bind('checkPlayerSourcesEvent', function(event, callback) {
 				_this.playbackCallback = callback;
 			});
@@ -114,14 +93,15 @@
 			});
 
 			this.bind('onChangeMedia', function(event) {
-				_this.disableRapt();
+				// TODO: Detect non-segment, then disable
+				// _this.disableRapt();
 			});
 
 			this.bind('updateLayout', function(){
 				_this.resizeEngine();
 			});
 
-			this.bind('monitorEvent onplay onpause', function(){
+			this.bind('monitorEvent onplay onpause ended', function(){
 				_this.updateEngine();
 			});
 
@@ -140,22 +120,6 @@
 			});
 		},
 
-		addOverrides: function() {
-			var _this = this;
-			var player = this.getPlayer();
-
-			this.originalSeek = player.seek;
-			player.seek = function(seekTime, stopAfterSeek) {
-				var args = arguments;
-
-				if (!_this.isEnabled()) {
-					return _this.originalSeek.apply(player, args);
-				} else {
-					return _this.seek(null, seekTime, stopAfterSeek);
-				}
-			}
-		},
-
 		readRaptProjectId: function() {
 			var partnerData = this.getPlayer().evaluate('{mediaProxy.entry.partnerData}');
 			var segments = (partnerData || "").split(';');
@@ -171,14 +135,17 @@
 
 			// Attempt to prevent the last segment from incorrectly triggering ended / replay behavior
 			this.getPlayer().onDoneInterfaceFlag = false;
+			this.getPlayer().setFlashvars('EmbedPlayer.ShowPosterOnStop', false);
 
 			// Keep the poster around until playback begins
 			mw.setConfig('EmbedPlayer.KeepPoster', true);
 
-			$.when(
-				this.loadEngine(),
-				this.loadSegments(raptProjectId)
-			).then(function() {
+			// Disable auto play
+			mw.setConfig('autoPlay', false);
+
+
+			this.loadEngine()
+			.then(function() {
 				if (raptProjectId !== _this.getConfig('projectId')) {
 					return _this.reject(new AbortError);
 				}
@@ -195,8 +162,6 @@
 					_this.$el.show();
 
 				_this.log('Starting rapt project');
-
-				_this.emit('detachTimeUpdate');
 
 				_this.setConfig('status', 'enabled', true);
 				_this.emit('raptMedia_ready');
@@ -227,8 +192,6 @@
 			this.getPlayer().onDoneInterfaceFlag = true;
 
 			this.emit('raptMedia_cleanup');
-			this.getPlayer().sendNotification('reattachTimeUpdate');
-
 			this.unbind('raptMedia_ready');
 
 			if (this.$el)
@@ -286,59 +249,6 @@
 			this.raptMediaEngine.execute(command);
 		},
 
-		//
-
-		play: function() {
-			if (this.segmentEnded) {
-				this.seek(null, 0, false);
-			} else {
-				this.getPlayer().sendNotification('doPlay');
-			}
-		},
-
-		pause: function() {
-			this.getPlayer().sendNotification('doPause');
-		},
-
-		seek: function(segment, time, stopAfterSeek) {
-			if (segment == null) {
-				segment = this.currentSegment;
-			} else if (this.currentSegment !== segment) {
-				this.currentSegment = segment;
-
-				// Clear before set to prevent default object merge behavior
-				this.setConfig('currentSegment', undefined, true);
-				this.setConfig('currentSegment', segment, true);
-
-				this.emit('raptMedia_newSegment', segment);
-			}
-
-			var segmentTime = Math.min(segment.duration, Math.max(0, time));
-			var absoluteTime = segment.startTime + segmentTime;
-			this.segmentEnded = time > segment.duration - END_EPSILON;
-
-			if (this.segmentEnded) {
-				stopAfterSeek = true;
-			}
-
-			if (stopAfterSeek == null && this.getPlayer().seeking) {
-				stopAfterSeek = this.getPlayer().stopAfterSeeking;
-			}
-
-			var flags = [];
-			if (this.segmentEnded) { flags.push('ending'); }
-
-			this.log('Seeking -- ' +
-				'absolute time: ' + absoluteTime.toFixed(3) + ', ' +
-				'segment: ' + segment.id + ', ' +
-				'segment time: ' + segmentTime.toFixed(3) + ', ' +
-				'flags: [' + flags.join(' ') + ']'
-			);
-
-			this.originalSeek.call(this.getPlayer(), absoluteTime, stopAfterSeek);
-			this.broadcastTime(segmentTime, segment.duration);
-		},
-
 		// Initialization Support
 
 		loadEngine: function() {
@@ -362,114 +272,6 @@
 			return this.enginePromise;
 		},
 
-		getPlayerUncertainty: function(discontinuityIndex) {
-			var streamerType = this.getPlayer().evaluate('{utility.streamerType}');
-			var position = discontinuityIndex + 1;
-
-			var AAC_FRAME_SIZE = 1024;
-			var MIN_SAMPLE_RATE = 44100;
-
-			var AAC_UNCERTAINTY = AAC_FRAME_SIZE / MIN_SAMPLE_RATE;
-
-			var MIN_FRAME_RATE = 24;
-			var MAX_DTS_OFFSET = 2;
-
-			var DTS_UNCERTAINTY = MAX_DTS_OFFSET / MIN_FRAME_RATE;
-			// Segment duration is based on the duration of all video frames, however on discontinuities HLS.js appears to take the longer of the audio or video duration.
-			// Audio will always be a multiple of AAC frame size (1024 samples) so we assume the maximum error of 1 AAC frame at the lowest sampling rate per discontinuity.
-
-			switch (streamerType) {
-				case 'mpegdash':
-					return DTS_UNCERTAINTY;
-				case 'hls':
-				default:
-					return AAC_UNCERTAINTY * position + DTS_UNCERTAINTY;
-			}
-		},
-
-		loadSegments: function(raptProjectId) {
-			var _this = this;
-
-			var playlistContent = this.getPlayer().evaluate('{mediaProxy.entry.playlistContent}')
-			var entryIds = (playlistContent || '').split(',');
-
-			var request = {
-				service: 'playlist',
-				action: 'execute',
-				id: this.getPlayer().evaluate('{mediaProxy.entry.id}')
-			};
-
-			_this.log('Loading video segment metadata');
-
-			return this.promise(function(resolve, reject) {
-				_this.getKalturaClient().doRequest(request, function (data) {
-					if (raptProjectId !== _this.getConfig('projectId')) {
-						return _this.reject(new AbortError);
-					}
-
-					if (!_this.isValidApiResult(data)) {
-						_this.fatal(
-							'Error loading video segment metadata',
-							'Error loading the interactive video segment metadata.'
-						);
-						return reject();
-					}
-
-					var msStartOffset = 0;
-					_this.segments = {};
-
-					data.forEach(function(entry, i) {
-						var entry = data[i];
-
-						var msUncertainty = _this.getPlayerUncertainty(i) * 1000;
-
-						var startTime = i === 0 ? 0 : Math.ceil((msStartOffset + msUncertainty) / 10) / 100;
-						var endTime = Math.floor((msStartOffset + entry.msDuration - msUncertainty) / 10) / 100;
-						var duration = endTime - startTime;
-						var uncertainty = Math.ceil(msUncertainty / 10) / 100;
-
-						var segment = {
-							id: entry.id,
-							uncertainty: uncertainty,
-
-							startTime: startTime,
-							duration: duration,
-							endTime: endTime,
-
-							width: entry.width,
-							height: entry.height
-						};
-
-						Object.freeze(segment);
-
-						_this.segments[segment.id] = segment;
-
-						msStartOffset += entry.msDuration;
-					});
-
-					_this.log('Loaded video segment metadata.');
-					if (typeof console.table === 'function') {
-						console.table(_this.segments);
-					}
-
-					var missing = entryIds.filter(function(entryId) {
-						return !_this.segments.hasOwnProperty(entryId);
-					});
-
-					if (missing.length > 0) {
-						_this.fatal(
-							'Error loading video segment metadata',
-							'Unable to load metadata for: ' + missing.join(', ') + '. There is likely a configuration issue'
-						);
-
-						return reject();
-					}
-
-					resolve();
-				});
-			});
-		},
-
 		getComponent: function () {
 
 			if ( ! this.$el) {
@@ -489,33 +291,24 @@
 
 				load: function(media, flags) {
 					var entryId = media.sources[0].src;
-					var nextSegment = _this.segments[entryId];
-					var stopAfterSeek = true;
 
-					if (_this.getConfig('status') === 'loading') {
-						stopAfterSeek = undefined;
-					}
+					_this.getPlayer().sendNotification('changeMedia', { entryId: entryId });
 
-					if (nextSegment) {
-						_this.seek(nextSegment, 0, stopAfterSeek);
-					} else {
-						_this.fatal(
-							'Error in RAPT playback',
-							'The follow segment was not found: ' + entryId
-						);
-					}
+					return _this.promise(function(resolve, reject) {
+						_this.once('playerReady', resolve);
+					});
 				},
 
 				play: function() {
-					_this.play();
+					_this.getPlayer().sendNotification('doPlay');
 				},
 
 				pause: function() {
-					_this.pause();
+					_this.getPlayer().sendNotification('doPause');
 				},
 
 				seek: function(time) {
-					_this.seek(null, time);
+					_this.getPlayer().sendNotification('doSeek', time);
 				},
 
 				event: function(event) {
@@ -576,78 +369,22 @@
 				return;
 			}
 
-			if (this.currentSegment == null) {
+			var player = this.getPlayer();
+
+			if (player.seeking) {
 				return;
 			}
-
-			if (this.getPlayer().seeking) {
-				return;
-			}
-
-			var absoluteTime = this.getPlayer().currentTime;
-			var segmentTime = absoluteTime - this.currentSegment.startTime;
-
-			var isBefore = segmentTime < -0.001;
-			var isEnding = segmentTime > this.currentSegment.duration - END_EPSILON;
-			var isAfter = segmentTime > this.currentSegment.duration + 0.001;
-
-			var flags = [];
-			if (isBefore) { flags.push('before'); }
-			if (isAfter) { flags.push('after');}
-			if (isEnding) { flags.push('ending');}
-
-			this.log('Update -- ' +
-				'absolute time: ' + absoluteTime.toFixed(3) + ', ' +
-				'segment: ' + this.currentSegment.id + ', ' +
-				'segment time: ' + segmentTime.toFixed(3) + ', ' +
-				'flags: [' + flags.join(' ') + ']'
-			);
-
-			if (isBefore) {
-				this.seek(null, SEEK_EPSILON);
-				return;
-			}
-
-			if (isAfter) {
-				// TODO: Handle when HLS.js attempts to seek over a gap
-				this.seek(null, this.currentSegment.duration - SEEK_EPSILON, true);
-				return;
-			}
-
-			if (isEnding && !this.segmentEnded) {
-				this.seek(null, this.currentSegment.duration, true);
-				return;
-			}
-
-			if (!isEnding) {
-				this.segmentEnded = false;
-			}
-
-			// "Hide" the fact that we pause the video a _little_ before the actual end.
-			var publicTime = (this.segmentEnded ? this.currentSegment.duration : segmentTime);
 
 			this.raptMediaEngine.update({
-				currentTime: publicTime,
-				duration: this.currentSegment.duration,
-				paused: !this.getPlayer().isPlaying(),
+				currentTime: player.currentTime,
+				duration: player.duration,
+				paused: !player.isPlaying(),
 
-				ended: this.segmentEnded,
+				ended: (player.duration - player.currentTime) < 0.25 && player.isStopped(),
 
-				videoWidth: this.currentSegment.width,
-				videoHeight: this.currentSegment.height
+				videoWidth: player.evaluate('{mediaProxy.entry.width}'),
+				videoHeight: player.evaluate('{mediaProxy.entry.height}'),
 			});
-
-			this.broadcastTime(publicTime, this.currentSegment.duration);
-		},
-
-		broadcastTime: function(currentTime, duration) {
-			// Update current time label
-			this.getPlayer().sendNotification('externalTimeUpdate', currentTime);
-
-			// Update scrubber
-			if (!this.getPlayer().userSlide) {
-				this.getPlayer().sendNotification('externalUpdatePlayHeadPercent', currentTime / duration);
-			}
 		},
 
 		resizeEngine: function() {
