@@ -130,7 +130,19 @@
 			this.setConfig('status', 'loading', true);
 			this.setConfig('projectId', raptProjectId, true);
 
+			// Keep list of entries that are part of this project
 			this.entries = this.getPlayer().evaluate('{mediaProxy.entry.playlistContent}').split(',');
+
+			// Store original config so they can be restored later
+			this.originalConfig = {
+				onDoneInterfaceFlag: this.getPlayer().onDoneInterfaceFlag,
+				shouldEndClip: this.getPlayer().shouldEndClip,
+
+				'EmbedPlayer.ShowPosterOnStop': this.getPlayer().getFlashvars('EmbedPlayer.ShowPosterOnStop'),
+
+				'EmbedPlayer.HidePosterOnStart': mw.getConfig('EmbedPlayer.HidePosterOnStart'),
+				'EmbedPlayer.KeepPoster': mw.getConfig('EmbedPlayer.KeepPoster'),
+			}
 
 			// Attempt to prevent the last segment from incorrectly triggering ended / replay behavior
 			this.getPlayer().onDoneInterfaceFlag = false;
@@ -189,7 +201,17 @@
 
 			this.entries = null;
 
-			mw.setConfig('EmbedPlayer.KeepPoster', false);
+			if (this.originalConfig) {
+				this.log('Restoring settings');
+
+				this.getPlayer().onDoneInterfaceFlag = this.originalConfig.onDoneInterfaceFlag;
+				this.getPlayer().shouldEndClip = this.originalConfig.shouldEndClip;
+				this.getPlayer().setFlashvars('EmbedPlayer.ShowPosterOnStop', this.originalConfig['EmbedPlayer.ShowPosterOnStop']);
+				mw.setConfig('EmbedPlayer.HidePosterOnStart', this.originalConfig['EmbedPlayer.HidePosterOnStart']);
+				mw.setConfig('EmbedPlayer.KeepPoster', this.originalConfig['EmbedPlayer.KeepPoster']);
+			}
+
+			this.originalConfig = null;
 
 			// Re-enable ended / replay behavior
 			this.getPlayer().onDoneInterfaceFlag = true;
