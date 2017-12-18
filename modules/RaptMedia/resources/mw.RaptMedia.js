@@ -90,6 +90,7 @@
 				var entryId = _this.getPlayer().kentryid;
 
 				if (_this.isEnabled() && _this.entries && _this.entries.indexOf(entryId) === -1) {
+					_this.showLiveStatus();
 					_this.disableRapt();
 				}
 			});
@@ -152,7 +153,7 @@
 			this.getPlayer().setFlashvars('EmbedPlayer.ShowPosterOnStop', false);
 
 			// Hide poster during transitions
-			mw.setConfig('EmbedPlayer.HidePosterOnStart', true);
+			//mw.setConfig('EmbedPlayer.HidePosterOnStart', true);
 
 			// Keep the poster around until playback begins
 			mw.setConfig('EmbedPlayer.KeepPoster', true);
@@ -186,6 +187,16 @@
 					_this.fatal('Unable to load rapt media project');
 				}
 			});
+		},
+
+		hideLiveStatus: function() {
+			var $el = $(this.getPlayer().getInterface().find('.liveStatus'));
+			if ($el) { $el.addClass('rapt-remove'); }
+		},
+
+		showLiveStatus: function() {
+			var $el = $(this.getPlayer().getInterface().find('.liveStatus'));
+			if ($el) { $el.removeClass('rapt-remove'); }
 		},
 
 		disableRapt: function() {
@@ -317,6 +328,7 @@
 				load: function(media, flags) {
 					var entryId = media.sources[0].src;
 
+					if (_this.entries[0] === entryId) { return };
 					return _this.promise(function(resolve, reject) {
 						function change() {
 							_this.log('Changing media');
@@ -356,7 +368,10 @@
 							// TODO: Trigger end screen
 							break;
 						case 'project:start':
+							_this.hideLiveStatus();
 							mw.setConfig('EmbedPlayer.KeepPoster', false);
+							mw.setConfig('EmbedPlayer.HidePosterOnStart', true);
+							setTimeout(function() {_this.getPlayer().sendNotification('changeMedia', { entryId: _this.entries[0] })}, 1)
 							_this.getPlayer().removePoster();
 							break;
 					}

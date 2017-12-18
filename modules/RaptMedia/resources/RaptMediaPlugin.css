@@ -4,3 +4,7 @@
 	top: 0;
 	left: 0;
 }
+
+.rapt-remove {
+	display: none !important;
+}
