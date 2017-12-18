@@ -397,6 +397,8 @@
 
 				videoWidth: player.evaluate('{mediaProxy.entry.width}'),
 				videoHeight: player.evaluate('{mediaProxy.entry.height}'),
+
+				readyState: player.getPlayerElement().readyState,
 			});
 		},
 
