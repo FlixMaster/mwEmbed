@@ -89,7 +89,7 @@
 			this.bind('onChangeMedia', function(event) {
 				var entryId = _this.getPlayer().kentryid;
 
-				if (_this.isEnabled() && _this.entries && !_this.entries.includes(entryId)) {
+				if (_this.isEnabled() && _this.entries && _this.entries.indexOf(entryId) === -1) {
 					_this.disableRapt();
 				}
 			});
