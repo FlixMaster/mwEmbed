@@ -87,8 +87,11 @@
 			});
 
 			this.bind('onChangeMedia', function(event) {
-				// TODO: Detect non-segment, then disable
-				// _this.disableRapt();
+				var entryId = _this.getPlayer().kentryid;
+
+				if (_this.isEnabled() && _this.entries && !_this.entries.includes(entryId)) {
+					_this.disableRapt();
+				}
 			});
 
 			this.bind('updateLayout', function(){
@@ -126,6 +129,8 @@
 
 			this.setConfig('status', 'loading', true);
 			this.setConfig('projectId', raptProjectId, true);
+
+			this.entries = this.getPlayer().evaluate('{mediaProxy.entry.playlistContent}').split(',');
 
 			// Attempt to prevent the last segment from incorrectly triggering ended / replay behavior
 			this.getPlayer().onDoneInterfaceFlag = false;
@@ -181,6 +186,8 @@
 			}
 
 			this.initialize();
+
+			this.entries = null;
 
 			mw.setConfig('EmbedPlayer.KeepPoster', false);
 
@@ -288,10 +295,20 @@
 				load: function(media, flags) {
 					var entryId = media.sources[0].src;
 
-					_this.getPlayer().sendNotification('changeMedia', { entryId: entryId });
-
 					return _this.promise(function(resolve, reject) {
-						_this.once('playerReady', resolve);
+						function change() {
+							_this.log('Changing media');
+							_this.getPlayer().sendNotification('changeMedia', { entryId: entryId });
+						}
+
+						if (_this.getPlayer().changeMediaStarted) {
+							_this.log('Change media already in progress, waiting');
+							_this.once('onChangeMediaDone', change);
+							resolve();
+						} else {
+							change();
+							_this.once('onChangeMediaDone', resolve);
+						}
 					});
 				},
 
