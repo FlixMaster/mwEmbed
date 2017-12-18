@@ -18,12 +18,6 @@
 
 	var AbortError = function() {};
 
-	// Required for playback of stitched playlists on android
-	mw.setConfig("Kaltura.LeadHLSOnAndroid", true);
-
-	// Required for playback of stitched playlists on IE11 on Windows 7
-	mw.setConfig("LeadWithHLSOnFlash", true);
-
 	mw.PluginManager.add( 'raptMedia', mw.KBaseComponent.extend( {
 
 		defaultConfig: {
@@ -135,14 +129,16 @@
 
 			// Attempt to prevent the last segment from incorrectly triggering ended / replay behavior
 			this.getPlayer().onDoneInterfaceFlag = false;
+			this.getPlayer().shouldEndClip = false;
+
+			// Don't show the poster at the end of a node
 			this.getPlayer().setFlashvars('EmbedPlayer.ShowPosterOnStop', false);
+
+			// Hide poster during transitions
+			mw.setConfig('EmbedPlayer.HidePosterOnStart', true);
 
 			// Keep the poster around until playback begins
 			mw.setConfig('EmbedPlayer.KeepPoster', true);
-
-			// Disable auto play
-			mw.setConfig('autoPlay', false);
-
 
 			this.loadEngine()
 			.then(function() {
