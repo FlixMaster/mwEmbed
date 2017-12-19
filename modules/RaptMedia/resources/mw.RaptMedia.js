@@ -151,9 +151,6 @@
 			// Don't show the poster at the end of a node
 			this.getPlayer().setFlashvars('EmbedPlayer.ShowPosterOnStop', false);
 
-			// Hide poster during transitions
-			mw.setConfig('EmbedPlayer.HidePosterOnStart', true);
-
 			// Keep the poster around until playback begins
 			mw.setConfig('EmbedPlayer.KeepPoster', true);
 
@@ -319,13 +316,17 @@
 				load: function(media, flags) {
 					var entryId = media.sources[0].src;
 
-					return _this.promise(function(resolve, reject) {
-						function change() {
-							_this.log('Changing media');
-							_this.getPlayer().sendNotification('changeMedia', { entryId: entryId });
-						}
+					function change() {
+						_this.log('Changing media');
+						_this.getPlayer().sendNotification('changeMedia', { entryId: entryId });
+					}
 
-						if (_this.getPlayer().changeMediaStarted) {
+					return _this.promise(function(resolve, reject) {
+						if (_this.getPlayer().currentState === 'start') {
+							_this.log('Project not started, deferring changeMedia');
+							_this.pendingEntryId = entryId;
+							resolve();
+						} else if (_this.getPlayer().changeMediaStarted) {
 							_this.log('Change media already in progress, waiting');
 							_this.once('onChangeMediaDone', change);
 							resolve();
@@ -337,7 +338,9 @@
 				},
 
 				play: function() {
-					_this.getPlayer().sendNotification('doPlay');
+					if (!_this.getPlayer().changeMediaStarted) {
+						_this.getPlayer().sendNotification('doPlay');
+					}
 				},
 
 				pause: function() {
@@ -358,8 +361,22 @@
 							// TODO: Trigger end screen
 							break;
 						case 'project:start':
+							if (_this.pendingEntryId) {
+								setTimeout(function() {
+									_this.log('Loading pending entry:' + _this.pendingEntryId);
+									_this.getPlayer().sendNotification('changeMedia', { entryId: _this.pendingEntryId });
+									_this.pendingEntryId = null;
+								}, 0);
+							}
+
+							// Hide poster during transitions
 							mw.setConfig('EmbedPlayer.KeepPoster', false);
+							mw.setConfig('EmbedPlayer.HidePosterOnStart', true);
+
+							// Hide undesirable UI elements
 							_this.getPlayer().getInterface().addClass('raptMedia_running');
+
+							// Get rid of the poster
 							_this.getPlayer().removePoster();
 							break;
 					}
