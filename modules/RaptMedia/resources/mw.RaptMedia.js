@@ -199,6 +199,8 @@
 
 			this.initialize();
 
+			this.getPlayer().getInterface().removeClass('raptMedia_running');
+
 			this.entries = null;
 
 			if (this.originalConfig) {
@@ -357,6 +359,7 @@
 							break;
 						case 'project:start':
 							mw.setConfig('EmbedPlayer.KeepPoster', false);
+							_this.getPlayer().getInterface().addClass('raptMedia_running');
 							_this.getPlayer().removePoster();
 							break;
 					}
