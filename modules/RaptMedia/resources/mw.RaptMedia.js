@@ -35,6 +35,9 @@
 
 			this.setConfig('projectId', undefined, true);
 			this.setConfig('info', undefined, true);
+
+			this.pendingEntryId = null;
+			this.targetEntryId = null;
 		},
 
 		addBindings: function() {
@@ -316,6 +319,8 @@
 				load: function(media, flags) {
 					var entryId = media.sources[0].src;
 
+					_this.targetEntryId = entryId;
+
 					function change() {
 						_this.log('Changing media');
 						_this.getPlayer().sendNotification('changeMedia', { entryId: entryId });
@@ -425,6 +430,13 @@
 			}
 
 			var player = this.getPlayer();
+
+			var currentEntryId = player.evaluate('{mediaProxy.entry.id}');
+			if (currentEntryId !== this.targetEntryId) {
+				this.log('Current media is out-of-date, skipping engine update');
+				return;
+			}
+
 
 			if (player.seeking) {
 				return;
