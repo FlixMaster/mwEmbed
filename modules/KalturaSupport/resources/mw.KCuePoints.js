@@ -26,11 +26,13 @@
 		midCuePointsArray: [],
 		codeCuePointsArray : [],
 		liveCuePointsIntervalId: null,
+		threshold: 3,
 		supportedCuePoints: [
 			mw.KCuePoints.TYPE.CODE,
 			mw.KCuePoints.TYPE.THUMB,
 			mw.KCuePoints.TYPE.QUIZ_QUESTION
 		],
+		previewCuePointTag:null,
 
 		init: function (embedPlayer) {
 			var _this = this;
@@ -38,7 +40,12 @@
 			this.destroy();
 			// Setup player ref:
 			this.embedPlayer = embedPlayer;
-
+			// grab duplicate-check threshold from player config if exists
+			var playerConfig = this.embedPlayer.playerConfig;
+			if( playerConfig.plugins.dualScreen
+				&& playerConfig.plugins.dualScreen.thresholdForDuplicateCP  ){
+				this.threshold = playerConfig.plugins.dualScreen.thresholdForDuplicateCP;
+			}
 			// Process cue points
 			embedPlayer.bindHelper('KalturaSupport_CuePointsReady' + this.bindPostfix, function () {
 				_this.initSupportedCuepointTypes();
@@ -79,7 +86,8 @@
 					if (cuePoint.cuePointType === 'codeCuePoint.Code')
 					{
 						newCodeCuePointsArray.push(cuePoint);
-					}else if (cuePoint.cuePointType != "eventCuePoint.Event") {
+                        newCuePointsArray.push(cuePoint);
+                    }else if (cuePoint.cuePointType != "eventCuePoint.Event") {
 						newCuePointsArray.push(cuePoint);
 					}
 				}
@@ -382,10 +390,45 @@
 				filteredCuePoints = $.grep( filteredCuePoints, function ( cuePoint ) {
 					var foundCuePointType = _this.validateCuePointAttribute(cuePoint, "cuePointType", type);
 					var foundCuePointSubType = _this.validateCuePointAttribute(cuePoint, "subType", subType);
-					return foundCuePointType && foundCuePointSubType;
+					var checkCuePointsTag = _this.validateCuePointTags(cuePoint, _this.getPreviewCuePointTag());
+					return foundCuePointType && foundCuePointSubType && checkCuePointsTag;
 				} );
+				// filter same CP
+				filteredCuePoints = filteredCuePoints.filter(function( item,index,allInArray ) {
+					return _this.removeDuplicatedCuePoints(allInArray,index);
+				});
 			}
 			return filteredCuePoints;
+		},
+		/**
+		 * check if CP have tag tagName which we do not want to show
+		 * @param cuePoint - Cp which we want to check
+		 * @param tagName - tag name which we do not want to show
+		 * @return {boolean} result - if true - will show current CP
+		 */
+		validateCuePointTags: function(cuePoint, tagName){
+			if(cuePoint && cuePoint.tags && tagName){
+				var result  = cuePoint.tags.indexOf(tagName) === -1;
+				var playerConfig = this.embedPlayer.playerConfig;
+				if(playerConfig && playerConfig.plugins && playerConfig.plugins.dualScreen && playerConfig.plugins.dualScreen.allowAdminCuePoints && !result){
+					result =  true;
+				}
+				return result;
+			}
+			return true;
+		},
+		getPreviewCuePointTag:function () {
+			if(!this.previewCuePointTag){
+				var tagName = "__PREVIEW_CUEPOINT_TAG__";
+				var playerConfig = this.embedPlayer.playerConfig;
+				if(playerConfig && playerConfig.plugins && playerConfig.plugins.dualScreen && playerConfig.plugins.dualScreen.PREVIEW_CUEPOINT_TAG){
+					tagName =  playerConfig.plugins.dualScreen.PREVIEW_CUEPOINT_TAG;
+				}
+				this.previewCuePointTag = tagName;
+				return tagName;
+			}
+			return this.previewCuePointTag;
+			
 		},
 		validateCuePointAttribute: function(cuePoint, attrName, attrValues){
 			var foundAttr = false;
@@ -405,13 +448,58 @@
 			return foundAttr;
 		},
 		/**
+		 * if have same CP earlier - hide current CuePoint
+		 * @param  allCP - array of CP where try to find same CP
+		 * @param  currentCuePointIndex - position from current CP
+		 *
+		 */
+		removeDuplicatedCuePoints:function (allCP, currentCuePointIndex) {
+			var defaultThreshold = this.threshold;
+			var currentCP = allCP[currentCuePointIndex];
+			var prevCP = this.getPrevCPWithCorrectType(allCP,currentCuePointIndex);
+			if(prevCP !== false && currentCP){
+				var createdAtDelta = Math.abs(currentCP.createdAt - prevCP.createdAt);
+				var startTimeDelta = Math.abs(currentCP.startTime - prevCP.startTime);
+				var isTheSamePartnerData = currentCP.partnerData === prevCP.partnerData;
+				var isTheSameTags = currentCP.tags === prevCP.tags;
+				if(isTheSamePartnerData && isTheSameTags && (createdAtDelta <= defaultThreshold*1000 || startTimeDelta <= defaultThreshold*1000)){
+					return false;
+				}
+			}
+			return true;
+		},
+		getPrevCPWithCorrectType: function (allCP,currentCuePointIndex) {
+			var prevCP = false;
+			var previousIndex = currentCuePointIndex - 1;
+			var currentCP = allCP[currentCuePointIndex];
+			var thresholdTime = this.threshold;
+			for(var i = previousIndex; i>=0;i--){
+				var startTimeDelta = Math.abs(currentCP.startTime - allCP[i].startTime);
+				//if delta of createdAt and startTime is more than thresholdTime - it's not a duplicated cuepoint
+				if(startTimeDelta > thresholdTime*1000){
+					break;
+				}
+				if(allCP[i].cuePointType === currentCP.cuePointType){
+					prevCP = allCP[i];
+					break;
+				}
+			}
+			return prevCP;
+		},
+		/**
 		 * Returns the next cuePoint object for requested time
 		 * @param {Number} time Time in milliseconds
 		 */
 		getNextCuePoint: function (time) {
-			if (!isNaN(time) && time >= 0) {
+            function compareByStartTime(a, b) {
+                if (a.startTime < b.startTime) return -1;
+                if (a.startTime > b.startTime) return 1;
+                return 0;
+            }
 
+            if (!isNaN(time) && time >= 0) {
 				var cuePoints = this.midCuePointsArray;
+				cuePoints.sort(compareByStartTime);
 				// Start looking for the cue point via time, return FIRST match:
 				for (var i = 0; i < cuePoints.length; i++) {
 					if (cuePoints[i].startTime >= time) {
