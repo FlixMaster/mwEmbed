@@ -431,6 +431,13 @@
 
 			var player = this.getPlayer();
 
+			if (!this.targetEntryId || this.pendingEntryId) {
+				this.raptMediaEngine.update({
+					paused: !player.isPlaying(),
+				});
+			}
+
+
 			var currentEntryId = player.evaluate('{mediaProxy.entry.id}');
 			if (currentEntryId !== this.targetEntryId) {
 				this.log('Current media is out-of-date, skipping engine update');
