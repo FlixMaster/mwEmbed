@@ -99,6 +99,23 @@
 					this.hls = null;
 				}
             },
+
+			/**
+			 * (Re-)Initialize HLS.js at a specific start time, used in the raptMedia module for accurate seeking
+			 */
+			initHlsAt: function(time) {
+				this.unRegisterHlsEvents();
+				this.hls.detachMedia();
+				this.hls.destroy();
+
+				var hlsConfig = this.getHlsConfig();
+				hlsConfig.startPosition = time;
+				this.hls = new Hls(hlsConfig);
+
+				this.registerHlsEvents();
+				this.hls.attachMedia(this.getPlayer().getPlayerElement());
+			},
+
 			/**
 			 * Register the playback events and attach the playback engine to the video element
 			 */

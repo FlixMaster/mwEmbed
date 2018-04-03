@@ -338,7 +338,13 @@
 				'flags: [' + flags.join(' ') + ']'
 			);
 
-			this.originalSeek.call(this.getPlayer(), absoluteTime, stopAfterSeek);
+			var hlsjs = this.getPlayer().plugins.hlsjs;
+			if (mw.getConfig('isHLS_JS')) {
+				this.getPlayer().plugins.hlsjs.initHlsAt(absoluteTime);
+			} else {
+				this.originalSeek.call(this.getPlayer(), absoluteTime, stopAfterSeek);
+			}
+
 			this.broadcastTime(segmentTime, segment.duration);
 		},
 
@@ -405,8 +411,11 @@
 					return DTS_UNCERTAINTY;
 				case 'hls':
 				default:
-					return AAC_UNCERTAINTY * position + DTS_UNCERTAINTY;
+					return 0;
 			}
+
+			// Original uncertainty calculation
+			return AAC_UNCERTAINTY * position + DTS_UNCERTAINTY;
 		},
 
 		loadSegments: function(raptProjectId) {
@@ -444,7 +453,6 @@
 						var entry = data[i];
 
 						var msUncertainty = _this.getPlayerUncertainty(i) * 1000;
-
 						var startTime = i === 0 ? 0 : Math.ceil((msStartOffset + msUncertainty) / 10) / 100;
 						var endTime = Math.floor((msStartOffset + entry.msDuration - msUncertainty) / 10) / 100;
 						var duration = endTime - startTime;
@@ -580,7 +588,7 @@
 					config.ga = ua;
 				}
 
-				this.raptMediaEngine = new Rapt.Engine(
+				this.engine = this.raptMediaEngine = new Rapt.Engine(
 					this.getDelegate(),
 					config
 				);
@@ -625,7 +633,7 @@
 				'flags: [' + flags.join(' ') + ']'
 			);
 
-			if (isBefore) {
+			if (isBefore && !mw.getConfig('isHLS_JS')) {
 				this.seek(null, SEEK_EPSILON);
 				return;
 			}
