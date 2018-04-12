@@ -304,10 +304,13 @@
 		},
 
 		seek: function(segment, time, stopAfterSeek) {
+			var switchingSegments = false;
+
 			if (segment == null) {
 				segment = this.currentSegment;
 			} else if (this.currentSegment !== segment) {
 				this.currentSegment = segment;
+				switchingSegments = true;
 
 				// Clear before set to prevent default object merge behavior
 				this.setConfig('currentSegment', undefined, true);
@@ -339,7 +342,8 @@
 			);
 
 			var hlsjs = this.getPlayer().plugins.hlsjs;
-			if (mw.getConfig('isHLS_JS')) {
+			if (mw.getConfig('isHLS_JS') && switchingSegments) {
+				this.log('Re-initalizing HLS.js instead of a seek');
 				this.getPlayer().plugins.hlsjs.initHlsAt(absoluteTime);
 			} else {
 				this.originalSeek.call(this.getPlayer(), absoluteTime, stopAfterSeek);
@@ -411,11 +415,8 @@
 					return DTS_UNCERTAINTY;
 				case 'hls':
 				default:
-					return 0;
+					return AAC_UNCERTAINTY * position + DTS_UNCERTAINTY;
 			}
-
-			// Original uncertainty calculation
-			return AAC_UNCERTAINTY * position + DTS_UNCERTAINTY;
 		},
 
 		loadSegments: function(raptProjectId) {
