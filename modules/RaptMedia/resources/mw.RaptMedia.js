@@ -465,6 +465,22 @@
 						return reject();
 					}
 
+					// POC for caching segments
+					// cache every segment of the video by setting currentTime
+					window.cacheSegment = function() {
+						var cacheVideo = document.getElementById("pid_kaltura_player");
+						var nextTime = cacheVideo.currentTime + 5;
+						console.log("caching time", nextTime, "of", cacheVideo.duration);
+						cacheVideo.currentTime = nextTime;
+						if (nextTime + 5 < cacheVideo.duration) {
+							setTimeout(cacheSegment, 200);
+						} else {
+							cacheVideo.currentTime = 0;
+						}
+					};
+					setTimeout(cacheSegment, 2000);
+					// END POC
+
 					resolve();
 				});
 			});
